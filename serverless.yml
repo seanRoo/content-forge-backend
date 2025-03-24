@@ -1,0 +1,66 @@
+service: contentforge-backend
+
+provider:
+  name: aws
+  runtime: nodejs18.x
+  region: us-east-1
+  environment:
+    BUCKET_NAME: contentforge-ai-uploads-54637291888
+    TABLE_NAME: ContentForgeData
+    OPENAI_API_KEY: ${env:OPENAI_API_KEY}
+    NODE_OPTIONS: --experimental-modules
+  deploymentBucket:
+    name: contentforge-ai-uploads-54637291888
+  iamRoleStatements:
+    - Effect: Allow
+      Action:
+        - s3:GetObject
+        - s3:ListBucket
+      Resource:
+        - arn:aws:s3:::contentforge-ai-uploads-54637291888
+        - arn:aws:s3:::contentforge-ai-uploads-54637291888/*
+    - Effect: Allow
+      Action:
+        - dynamodb:PutItem
+      Resource:
+        - arn:aws:dynamodb:us-east-1:339712839713:table/ContentForgeData
+
+functions:
+  uploadContent:
+    handler: uploadContent.uploadContent
+    events:
+      - http:
+          path: upload
+          method: post
+  processContent:
+    handler: processContent.processContent
+    events:
+      - http:
+          path: process
+          method: post
+
+resources:
+  Resources:
+    ContentForgeData:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: ContentForgeData
+        AttributeDefinitions:
+          - AttributeName: id
+            AttributeType: S
+        KeySchema:
+          - AttributeName: id
+            KeyType: HASH
+        BillingMode: PAY_PER_REQUEST
+
+    S3BucketPolicy:
+      Type: AWS::S3::BucketPolicy
+      Properties:
+        Bucket: contentforge-ai-uploads-54637291888
+        PolicyDocument:
+          Version: "2012-10-17"
+          Statement:
+            - Effect: Allow
+              Principal: "*"
+              Action: "s3:PutObject"
+              Resource: "arn:aws:s3:::contentforge-ai-uploads-54637291888/*"
