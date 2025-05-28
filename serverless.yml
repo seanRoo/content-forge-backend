@@ -1,43 +1,144 @@
 service: contentforge-backend
 
+plugins:
+  - serverless-dotenv-plugin
+
+custom:
+  dotenv:
+    path: .env
+
 provider:
   name: aws
   runtime: nodejs18.x
   region: us-east-1
+  deploymentBucket:
+    name: contentforge-ai-uploads-54637291888
   environment:
     BUCKET_NAME: contentforge-ai-uploads-54637291888
     TABLE_NAME: ContentForgeData
     OPENAI_API_KEY: ${env:OPENAI_API_KEY}
     NODE_OPTIONS: --experimental-modules
-  deploymentBucket:
-    name: contentforge-ai-uploads-54637291888
-  iamRoleStatements:
-    - Effect: Allow
-      Action:
-        - s3:GetObject
-        - s3:ListBucket
-      Resource:
-        - arn:aws:s3:::contentforge-ai-uploads-54637291888
-        - arn:aws:s3:::contentforge-ai-uploads-54637291888/*
-    - Effect: Allow
-      Action:
-        - dynamodb:PutItem
-      Resource:
-        - arn:aws:dynamodb:us-east-1:339712839713:table/ContentForgeData
+    SQS_QUEUE_URL: !Ref ProcessingQueue
+    LD_LIBRARY_PATH: /opt/lib:/lib:/usr/lib
+  httpApi:
+    cors: true
+  iam:
+    role:
+      statements:
+        - Effect: Allow
+          Action:
+            - s3:GetObject
+          Resource:
+            - arn:aws:s3:::contentforge-ai-uploads-54637291888/yt-cookies.txt
+
+package:
+  individually: true # ensures each function is packaged separately
+  excludeDevDependencies: true
 
 functions:
-  uploadContent:
+  getUploadUrl:
     handler: uploadContent.uploadContent
     events:
-      - http:
-          path: upload
+      - httpApi:
+          path: /get-upload-url
           method: post
+    package:
+      include:
+        - uploadContent.js
+
   processContent:
     handler: processContent.processContent
     events:
-      - http:
-          path: process
+      - httpApi:
+          path: /process
           method: post
+    package:
+      include:
+        - processContent.js
+        - utils/**
+        - textProcessing.js
+        - segmentProcessing.js
+
+  checkStatus:
+    handler: checkStatus.checkStatus
+    events:
+      - httpApi:
+          path: /check-status
+          method: post
+    package:
+      include:
+        - checkStatus.js
+
+  processQueue:
+    handler: processQueue.processQueue
+    timeout: 900
+    events:
+      - sqs:
+          arn:
+            Fn::GetAtt:
+              - ProcessingQueue
+              - Arn
+    layers:
+      - { Ref: FfmpegLambdaLayer }
+    package:
+      include:
+        - processQueue.js
+        - utils/**
+        - textProcessing.js
+        - segmentProcessing.js
+      exclude:
+        - node_modules/**
+        - .env
+        - serverless.yml
+        - package.json
+        - package-lock.json
+        - eslint.config.js
+        - uploadContent.js
+        - processContent.js
+        - downloadAudioFromUrl.js
+        - extractFromUrl.js
+        - generatePosts.js
+        - getUploadUrl.js
+        - checkStatus.js
+
+  generatePosts:
+    handler: generatePosts.generatePosts
+    timeout: 29
+    events:
+      - httpApi:
+          path: /generate-posts
+          method: post
+    package:
+      include:
+        - generatePosts.js
+
+  extractFromUrl:
+    handler: extractFromUrl.extractFromUrl
+    timeout: 29
+    layers:
+      - { Ref: YtdlpLambdaLayer }
+      - { Ref: FfmpegLambdaLayer }
+    package:
+      include:
+        - extractFromUrl.js
+        - downloadAudioFromUrl.js
+    events:
+      - httpApi:
+          path: /extract-from-url
+          method: post
+
+layers:
+  ffmpeg:
+    path: layers/ffmpeg
+    name: contentforge-ffmpeg
+    compatibleRuntimes:
+      - nodejs18.x
+
+  ytdlp:
+    path: layers/yt-dlp
+    name: contentforge-ytdlp
+    compatibleRuntimes:
+      - nodejs18.x
 
 resources:
   Resources:
@@ -53,14 +154,18 @@ resources:
             KeyType: HASH
         BillingMode: PAY_PER_REQUEST
 
-    S3BucketPolicy:
-      Type: AWS::S3::BucketPolicy
+    ProcessingQueue:
+      Type: AWS::SQS::Queue
       Properties:
-        Bucket: contentforge-ai-uploads-54637291888
-        PolicyDocument:
-          Version: "2012-10-17"
-          Statement:
-            - Effect: Allow
-              Principal: "*"
-              Action: "s3:PutObject"
-              Resource: "arn:aws:s3:::contentforge-ai-uploads-54637291888/*"
+        QueueName: ContentForgeProcessingQueue
+        VisibilityTimeout: 920
+
+  Outputs:
+    SQSQueueUrl:
+      Description: URL of the processing SQS queue
+      Value:
+        Ref: ProcessingQueue
+    DynamoDbTableName:
+      Description: Name of the DynamoDB table
+      Value:
+        Ref: ContentForgeData

@@ -13,10 +13,17 @@
   "dependencies": {
     "aws-sdk": "^2.1692.0",
     "axios": "^1.8.4",
+    "ffmpeg-static": "^5.2.0",
     "form-data": "^4.0.2",
-    "uuid": "^11.1.0"
+    "uuid": "^11.1.0",
+    "yt-dlp-exec": "^1.0.2"
   },
   "devDependencies": {
-    "serverless-dotenv-plugin": "^6.0.0"
+    "@eslint/js": "^9.23.0",
+    "eslint": "^8.57.1",
+    "eslint-plugin-import": "^2.31.0",
+    "globals": "^16.0.0",
+    "serverless-dotenv-plugin": "^6.0.0",
+    "serverless-esbuild": "^1.55.0"
   }
 }
