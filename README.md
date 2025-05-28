@@ -29,7 +29,4 @@ ContentForge is a serverless backend that transforms long-form content (text, au
 - ffmpeg & yt-dlp (via Lambda layers)
 - OpenAI Whisper & GPT
 
----
-
-## 📁 Folder Structure
 
